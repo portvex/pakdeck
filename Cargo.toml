@@ -2,8 +2,12 @@
 name = "pakdeck"
 version = "0.1.0"
 edition = "2024"
-description = "Terminal UI for many package managers: apt, dnf, zypper, pacman, apk, brew, nix, flatpak, snap, pkg, winget and more"
+# Oldest Rust that builds it (the newest dependency needs 1.89). When changing it,
+# also update the msrv job in .github/workflows/ci.yml and the README CI section.
+rust-version = "1.89"
+description = "Terminal UI for your package managers: apt, dnf, zypper, pacman/AUR, apk, xbps, nix, brew, flatpak, snap, pkg, winget and scoop in one interface"
 license = "MIT"
+repository = "https://github.com/portvex/pakdeck"
 readme = "README.md"
 keywords = ["tui", "package-manager", "apt", "homebrew", "flatpak"]
 categories = ["command-line-utilities"]

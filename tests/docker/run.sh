@@ -3,6 +3,7 @@
 # rust:alpine container, then runs tests/docker/check.sh inside each distro.
 #
 # Usage: tests/docker/run.sh [debian|ubuntu|fedora|opensuse|arch|alpine|void|nix ...]
+# PAKDECK_BIN=/abs/path/pakdeck skips the build and tests that binary (CI).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -20,8 +21,13 @@ if [[ "$(uname -m)" == x86_64 ]]; then IMAGES[arch]=archlinux:latest; fi
 DISTROS=("$@")
 [[ ${#DISTROS[@]} -eq 0 ]] && DISTROS=(debian ubuntu fedora opensuse arch alpine void nix)
 
-echo "==> building static binary"
-BIN=$(tests/build-linux.sh | tail -1)
+if [[ -n "${PAKDECK_BIN:-}" ]]; then
+  BIN=$PAKDECK_BIN
+  echo "==> using $BIN"
+else
+  echo "==> building static binary"
+  BIN=$(tests/build-linux.sh | tail -1)
+fi
 
 declare -A RESULT
 for d in "${DISTROS[@]}"; do

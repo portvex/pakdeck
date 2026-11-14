@@ -1,6 +1,8 @@
 # pakdeck
 
-A terminal UI for the system package manager, written in Rust with
+[![CI](https://github.com/portvex/pakdeck/actions/workflows/ci.yml/badge.svg)](https://github.com/portvex/pakdeck/actions/workflows/ci.yml)
+
+A terminal UI for your package managers, written in Rust with
 [ratatui](https://ratatui.rs). One interface for:
 
 | Platform                 | Backend       | Tools used                                  | Tested in   |
@@ -422,6 +424,17 @@ again (after `rm .git/hooks/pre-commit .git/hooks/pre-push`) to reinstall.
 
 If `core.hooksPath` points to a global hooks directory, that directory's hook
 must call the repository hook in `.git/hooks` for these to run.
+
+### CI
+
+GitHub Actions runs the same checks on pushes to `main` and on pull requests
+(`.github/workflows/ci.yml`): fmt and clippy (also for FreeBSD and Windows),
+tests on Linux and macOS, a build with the minimum Rust version (1.89, the
+`rust-version` in `Cargo.toml`), `cargo deny` and `cargo machete`, 30 seconds
+of fuzzing per target and the static musl builds, uploaded as artifacts. The
+Docker backend tests (`.github/workflows/backend.yml`) run on `main`, weekly,
+and on pull requests that touch the backends. Dependabot
+(`.github/dependabot.yml`) proposes dependency and action updates weekly.
 
 ### Formatting and lint
 

@@ -1,0 +1,146 @@
+# Mirrors the local checks (CLAUDE.md, .cargo-husky/hooks): fmt, clippy with
+# the no-panic lints on every supported platform, tests, dependency policy,
+# a short fuzz run and the static Linux builds. The Docker backend tests are
+# in backend.yml.
+#
+# The toolchain is `stable`, not pinned: a new Rust release can bring new
+# clippy lints and turn main red without a code change. That is accepted to
+# keep up with the lints; the msrv job guards the oldest supported version.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1" # Mondays: catches breakage from new toolchains and lints
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Superseded pull request runs are cancelled; every commit on main keeps its result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-unknown-freebsd, x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            fuzz
+      - run: cargo fmt --all --check
+      - run: cargo fmt --all --check --manifest-path fuzz/Cargo.toml
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      # Not --locked: fuzz/ resolves pakdeck's dependencies too, so its lockfile
+      # can trail a root dependency bump by one Dependabot PR.
+      - run: cargo clippy --all-targets --manifest-path fuzz/Cargo.toml -- -D warnings
+      - name: clippy for Linux, FreeBSD and Windows
+        run: scripts/cross-check.sh
+        env:
+          CROSS_CHECK_STRICT: "1"
+
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked
+
+  msrv:
+    name: minimum Rust (1.89)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Keep in step with rust-version in Cargo.toml.
+      - uses: dtolnay/rust-toolchain@1.89
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --locked --all-targets
+
+  deps:
+    name: dependencies (deny, machete)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-machete
+      - run: cargo machete
+
+  fuzz:
+    name: fuzz (30 s per target)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      # Keep the corpus between runs so each run builds on the last one.
+      - uses: actions/cache@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: fuzz-corpus-
+      - run: scripts/fuzz.sh 30
+      - name: upload crash inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts
+          if-no-files-found: ignore
+
+  musl:
+    name: static Linux build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            alias: musl
+          - target: aarch64-unknown-linux-musl
+            alias: musl-arm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo ${{ matrix.alias }}
+      - if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: target/x86_64-unknown-linux-musl/static/pakdeck --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pakdeck-${{ matrix.target }}
+          path: target/${{ matrix.target }}/static/pakdeck
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # One entry for both crates, so a shared dependency moves in one PR for
+  # the root and fuzz/ (fuzz depends on pakdeck through a path, and pins
+  # ratatui, toml and vt100 itself; split bumps would not compile).
+  - package-ecosystem: cargo
+    directories: ["/", "/fuzz"]
+    # Raise a requirement in Cargo.toml only when the new version does not
+    # satisfy it (major bumps); otherwise only the lockfiles change, so
+    # fuzz/Cargo.lock stays valid for the root's requirements.
+    versioning-strategy: increase-if-necessary
+    schedule:
+      interval: weekly
+    groups:
+      # Shared with the fuzz crate: always together, whatever the bump.
+      # For these 0.x crates a "minor" bump is a breaking one.
+      shared-with-fuzz:
+        patterns: ["ratatui", "ratatui-*", "toml", "toml_edit", "vt100"]
+      # Patch updates are compatible, also for 0.x crates: one PR a week.
+      # Every other minor or major bump gets its own PR.
+      patch:
+        update-types: [patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

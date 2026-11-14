@@ -1,0 +1,71 @@
+# Backend integration tests: tests/docker/run.sh runs every pakdeck operation
+# for real inside each distro (tests/docker/check.sh). The static binary is
+# built once (tests/build-linux.sh, exactly as shipped) and shared by the
+# distro jobs. Slow, so pull requests run it only when they touch the code
+# check.sh exercises or the tests themselves.
+name: Backend tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "src/backend/**"
+      - "src/main.rs"
+      - "src/term.rs"
+      - "src/config.rs"
+      - "src/export.rs"
+      - "src/history.rs"
+      - "tests/docker/**"
+      - "tests/build-linux.sh"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/config.toml"
+      - ".github/workflows/backend.yml"
+  schedule:
+    - cron: "37 4 * * 1" # Mondays: distro images change under us
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Superseded pull request runs are cancelled; every commit on main keeps its result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: build static binary
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: tests/build-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pakdeck-docker-test
+          path: target/docker/x86_64-unknown-linux-musl/static/pakdeck
+          if-no-files-found: error
+          retention-days: 1
+
+  docker:
+    name: ${{ matrix.distro }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [debian, ubuntu, fedora, opensuse, arch, alpine, void, nix]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pakdeck-docker-test
+          path: ${{ runner.temp }}/bin
+      # Artifacts do not keep the executable bit.
+      - run: chmod +x "$RUNNER_TEMP/bin/pakdeck"
+      - run: tests/docker/run.sh ${{ matrix.distro }}
+        env:
+          PAKDECK_BIN: ${{ runner.temp }}/bin/pakdeck
