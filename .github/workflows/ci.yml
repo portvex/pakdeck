@@ -69,6 +69,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --locked
+      - name: Homebrew formula passes brew style
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p "$RUNNER_TEMP/Formula"
+          # Different dummy hashes: identical ones trip a style cop.
+          {
+            echo "$(printf 'a%.0s' {1..64})  pakdeck-v0.0.0-aarch64-apple-darwin.tar.gz"
+            echo "$(printf 'b%.0s' {1..64})  pakdeck-v0.0.0-x86_64-apple-darwin.tar.gz"
+          } > "$RUNNER_TEMP/SHA256SUMS"
+          scripts/homebrew.sh v0.0.0 "$RUNNER_TEMP/SHA256SUMS" "$RUNNER_TEMP/Formula/pakdeck.rb"
+          brew style "$RUNNER_TEMP/Formula/pakdeck.rb"
+          # A missing archive must fail the script, not write a broken formula.
+          grep -v x86_64 "$RUNNER_TEMP/SHA256SUMS" > "$RUNNER_TEMP/partial"
+          if scripts/homebrew.sh v0.0.0 "$RUNNER_TEMP/partial" "$RUNNER_TEMP/bad.rb"; then
+            echo "::error::homebrew.sh accepted SHA256SUMS without the Intel archive"
+            exit 1
+          fi
 
   msrv:
     name: minimum supported Rust

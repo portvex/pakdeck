@@ -36,7 +36,15 @@ parsers are unit-tested, but it has not been run on a real Windows system.
 
 ## Install
 
-Download the archive for your platform from the
+On macOS, with [Homebrew](https://brew.sh):
+
+```sh
+brew install portvex/tap/pakdeck
+```
+
+`brew upgrade` picks up new versions once the tap has them, and
+`brew uninstall pakdeck` removes it; no quarantine step is needed. Otherwise
+download the archive for your platform from the
 [releases page](https://github.com/portvex/pakdeck/releases), unpack it and
 put `pakdeck` (`pakdeck.exe` on Windows) from the unpacked folder on your
 `PATH`:
@@ -516,7 +524,13 @@ on `main`, weekly, and on pull requests that touch the backends. Dependabot
 `.github/workflows/release.yml` checks that the tag matches `Cargo.toml`,
 runs the tests, builds the five archives and the Linux packages above, and
 publishes a GitHub release with `SHA256SUMS`, provenance attestations and
-notes generated from the merged pull requests. Release tags (`v*`) cannot be
+notes generated from the merged pull requests. Stable releases also get
+`pakdeck.rb` (written by `scripts/homebrew.sh` from
+`packaging/homebrew/pakdeck.rb.in`); put it into the Homebrew tap with a pull
+request on [portvex/homebrew-tap](https://github.com/portvex/homebrew-tap):
+in a clone of it, on a new branch, run
+`gh release download vX.Y.Z -R portvex/pakdeck -p pakdeck.rb -O Formula/pakdeck.rb --clobber`,
+then commit and open the pull request. Release tags (`v*`) cannot be
 moved or deleted, so a broken release is fixed with a new version. If only
 the workflow failed, fix it on `main` and run "Release" by hand from `main`
 (Actions, Run workflow) with the existing tag; tick "replace the assets" if
