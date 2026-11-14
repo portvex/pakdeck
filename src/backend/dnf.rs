@@ -5,6 +5,28 @@ use super::{
 };
 use anyhow::Result;
 use std::collections::HashSet;
+use std::sync::Mutex;
+
+/// dnf5 (and dnf4) refresh expired repository metadata on demand. When
+/// pakdeck's background queries run at once with a cold cache (after
+/// `dnf clean all`, or the first start), one query rewrites
+/// /var/cache/libdnf5 while another reads it and fails with "cannot open
+/// file". pakdeck's dnf queries therefore take turns, like zypper's.
+/// Only queries take the lock: mutating commands run in the terminal pane,
+/// and the app starts no queries while one runs (it reloads afterwards).
+static DNF: Mutex<()> = Mutex::new(());
+
+/// A read-only dnf/yum query, one at a time.
+fn dnf_query(bin: &str, args: &[&str]) -> Result<String> {
+    let _turn = DNF.lock().unwrap_or_else(|e| e.into_inner());
+    run(bin, args)
+}
+
+/// Like `dnf_query`, accepting the given non-zero exit codes.
+fn dnf_query_codes(bin: &str, args: &[&str], ok_codes: &[i32]) -> Result<String> {
+    let _turn = DNF.lock().unwrap_or_else(|e| e.into_inner());
+    capture(bin, args, ok_codes)
+}
 
 pub struct Dnf {
     bin: &'static str,
@@ -15,7 +37,7 @@ impl Dnf {
     /// python3-dnf-plugin-versionlock package, without which dnf answers
     /// "No such command" (reported as unsupported, not as an error).
     fn versionlock_list(&self) -> Result<String> {
-        match run(self.bin, &["versionlock", "list"]) {
+        match dnf_query(self.bin, &["versionlock", "list"]) {
             Err(e) if is_missing_command(&format!("{e:#}")) => unsupported(format!(
                 "{}: holds need the versionlock plugin (install python3-dnf-plugin-versionlock)",
                 self.bin
@@ -36,7 +58,7 @@ impl Dnf {
     fn names(&self, args: &[&str]) -> Result<Vec<String>> {
         let mut a = vec!["repoquery", "-q", "--qf", "%{name}\n"];
         a.extend(args);
-        Ok(lines(&run(self.bin, &a)?))
+        Ok(lines(&dnf_query(self.bin, &a)?))
     }
 }
 
@@ -47,7 +69,7 @@ impl Backend for Dnf {
 
     fn search(&self, query: &str) -> Result<Vec<Package>> {
         let pattern = format!("*{}*", query.trim());
-        let out = run(
+        let out = dnf_query(
             self.bin,
             &[
                 "repoquery",
@@ -67,12 +89,12 @@ impl Backend for Dnf {
 
     fn updates(&self) -> Result<Vec<Package>> {
         // check-update exits with 100 when updates are available.
-        let out = capture(self.bin, &["check-update", "-q"], &[100])?;
+        let out = dnf_query_codes(self.bin, &["check-update", "-q"], &[100])?;
         Ok(parse_check_update(&out))
     }
 
     fn info(&self, pkg: &Package) -> Result<String> {
-        run(self.bin, &["info", "-q", &pkg.name])
+        dnf_query(self.bin, &["info", "-q", &pkg.name])
     }
 
     fn install(&self, pkgs: &[Package]) -> Vec<Cmd> {
@@ -104,7 +126,7 @@ impl Backend for Dnf {
 
     fn orphans(&self) -> Result<Vec<Package>> {
         let qf = "%{name}\t%{version}-%{release}\t%{summary}\n";
-        Ok(parse_tabbed(&run(
+        Ok(parse_tabbed(&dnf_query(
             self.bin,
             &["repoquery", "-q", "--unneeded", "--qf", qf],
         )?))
@@ -121,7 +143,7 @@ impl Backend for Dnf {
                 .or_else(|_| self.names(&["--providers-of=requires", name])),
             Section::RequiredBy => self.names(&["--installed", "--whatrequires", name]),
             Section::Files => {
-                rpm::files(name).or_else(|_| Ok(lines(&run(self.bin, &["repoquery", "-q", "-l", name])?)))
+                rpm::files(name).or_else(|_| Ok(lines(&dnf_query(self.bin, &["repoquery", "-q", "-l", name])?)))
             }
         }
     }
@@ -140,11 +162,11 @@ impl Backend for Dnf {
     fn versions(&self, pkg: &Package) -> Result<Vec<VersionChoice>> {
         let qf = "%{version}-%{release}\n";
         // dnf4 needs --showduplicates; dnf5 lists every version by default.
-        let out = run(
+        let out = dnf_query(
             self.bin,
             &["repoquery", "-q", "--showduplicates", "--qf", qf, &pkg.name],
         )
-        .or_else(|_| run(self.bin, &["repoquery", "-q", "--qf", qf, &pkg.name]))?;
+        .or_else(|_| dnf_query(self.bin, &["repoquery", "-q", "--qf", qf, &pkg.name]))?;
         Ok(plain_versions(lines(&out)))
     }
 

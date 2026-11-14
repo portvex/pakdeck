@@ -1,6 +1,6 @@
 [package]
 name = "pakdeck"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 # Oldest Rust that builds it (the newest dependency needs 1.89). When changing it,
 # also update the toolchain of the msrv job in .github/workflows/ci.yml.
