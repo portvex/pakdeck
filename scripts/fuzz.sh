@@ -7,8 +7,8 @@
 #
 # New interesting inputs go to fuzz/corpus/<target>; checked-in seeds in
 # fuzz/seeds/<target> are read too. Crashes land in fuzz/artifacts/<target>;
-# reproduce with: scripts/fuzz.sh is a thin wrapper around
-#   cargo +nightly fuzz run <target> <artifact-file>
+# reproduce one with (--target matters when cargo-fuzz is a musl build):
+#   cargo +nightly fuzz run --target "$(rustc +nightly -vV | sed -n 's/^host: //p')" <target> <artifact-file>
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -18,6 +18,12 @@ nightly() {
   RUSTC="$(rustup which --toolchain nightly rustc)" \
     "$(rustup which --toolchain nightly cargo)" "$@"
 }
+
+# cargo-fuzz builds for the triple it was itself built for unless told
+# otherwise; a static (musl) cargo-fuzz binary, as CI installs, would pick
+# musl, where sanitizers cannot run. Always build for rustc's host.
+host=$("$(rustup which --toolchain nightly rustc)" -vV | sed -n 's/^host: //p')
+[[ -n "$host" ]] || { echo "fuzz: cannot determine the nightly host triple" >&2; exit 1; }
 
 secs=${1:-60}
 shift || true
@@ -32,6 +38,6 @@ for t in "${targets[@]}"; do
   dirs=("fuzz/corpus/$t")
   mkdir -p "${dirs[0]}"
   [[ -d "fuzz/seeds/$t" ]] && dirs+=("fuzz/seeds/$t")
-  nightly fuzz run "$t" "${dirs[@]}" -- -max_total_time="$secs" -timeout=10
+  nightly fuzz run --target "$host" "$t" "${dirs[@]}" -- -max_total_time="$secs" -timeout=10
 done
 echo "all fuzz targets ran clean"
