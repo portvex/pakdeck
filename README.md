@@ -30,6 +30,32 @@ operations go to the package's own manager, and `f` filters by source.
 Windows (winget, scoop) builds and passes clippy for its target and its output
 parsers are unit-tested, but it has not been run on a real Windows system.
 
+## Install
+
+Download the archive for your platform from the
+[releases page](https://github.com/portvex/pakdeck/releases), unpack it and
+put `pakdeck` (`pakdeck.exe` on Windows) from the unpacked folder on your
+`PATH`:
+
+| Platform | Archive |
+|---|---|
+| Linux x86_64, any distribution (static) | `pakdeck-vX.Y.Z-x86_64-unknown-linux-musl.tar.gz` |
+| Linux aarch64, any distribution (static) | `pakdeck-vX.Y.Z-aarch64-unknown-linux-musl.tar.gz` |
+| macOS, Apple Silicon | `pakdeck-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
+| macOS, Intel | `pakdeck-vX.Y.Z-x86_64-apple-darwin.tar.gz` |
+| Windows x86_64 (not yet tried on real Windows) | `pakdeck-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
+| FreeBSD | no prebuilt archive yet: install from source (below) |
+
+Check the archive against the release's `SHA256SUMS`
+(`sha256sum -c SHA256SUMS --ignore-missing`; on macOS
+`shasum -a 256 -c SHA256SUMS --ignore-missing`), and where it was built with
+`gh attestation verify <archive> --repo portvex/pakdeck`. macOS may block the
+binary the first time; in the unpacked folder, run
+`xattr -d com.apple.quarantine pakdeck`.
+
+From source (needs Rust 1.89 or newer, the `rust-version` in `Cargo.toml`):
+`cargo install --git https://github.com/portvex/pakdeck`, or see Build below.
+
 ## Features
 
 - **Search** repositories and **review** packages: version, repository, size,
@@ -427,14 +453,41 @@ must call the repository hook in `.git/hooks` for these to run.
 
 ### CI
 
-GitHub Actions runs the same checks on pushes to `main` and on pull requests
-(`.github/workflows/ci.yml`): fmt and clippy (also for FreeBSD and Windows),
-tests on Linux and macOS, a build with the minimum Rust version (1.89, the
-`rust-version` in `Cargo.toml`), `cargo deny` and `cargo machete`, 30 seconds
-of fuzzing per target and the static musl builds, uploaded as artifacts. The
-Docker backend tests (`.github/workflows/backend.yml`) run on `main`, weekly,
-and on pull requests that touch the backends. Dependabot
+GitHub Actions runs the same checks on pushes to `main`, on pull requests
+and weekly (`.github/workflows/ci.yml`): fmt and clippy (also for FreeBSD and
+Windows), tests on Linux and macOS, a build with the minimum supported Rust
+(the `rust-version` in `Cargo.toml`), `cargo deny` and `cargo machete`, 30
+seconds of fuzzing per target and the static musl builds, uploaded as
+artifacts. The final "CI ok" job sums them up and is the required check for
+pull requests. The Docker backend tests (`.github/workflows/backend.yml`) run
+on `main`, weekly, and on pull requests that touch the backends. Dependabot
 (`.github/dependabot.yml`) proposes dependency and action updates weekly.
+
+### Releasing
+
+1. Set the new `version` in `Cargo.toml`, run `cargo check` (updates
+   `Cargo.lock`), and merge that through a pull request.
+2. When CI on `main` is green for that commit, tag it and push the tag:
+   `git tag -a v0.2.0 -m "pakdeck v0.2.0" && git push origin v0.2.0`.
+
+`.github/workflows/release.yml` checks that the tag matches `Cargo.toml`,
+runs the tests, builds the five archives above, and publishes a GitHub
+release with `SHA256SUMS`, provenance attestations and notes generated from
+the merged pull requests. Release tags (`v*`) cannot be moved or deleted, so
+a broken release is fixed with a new version. If only the workflow failed,
+fix it on `main` and run "Release" by hand from `main` (Actions, Run
+workflow) with the existing tag; tick "replace the assets" if the release
+already has them. A tag with a suffix (`v0.2.0-rc1`) is published as a pre-release.
+
+### Repository rules
+
+- `main`: no force pushes or deletion (for everyone); changes come in
+  through pull requests whose CI passes (the "CI ok" check; no review
+  needed). Repository admins can bypass the pull request rule.
+- `v*` tags: only admins create them; nobody can move or delete them.
+
+The rulesets live in `.github/rulesets/`; after changing one, apply them
+with `scripts/rulesets.sh` (needs `gh` as a repository admin).
 
 ### Formatting and lint
 

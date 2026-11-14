@@ -6,6 +6,10 @@
 # The toolchain is `stable`, not pinned: a new Rust release can bring new
 # clippy lints and turn main red without a code change. That is accepted to
 # keep up with the lints; the msrv job guards the oldest supported version.
+#
+# The only required status check on main (.github/rulesets/main-pr.json) is
+# the "CI ok" job at the end, which needs every other job. Add new jobs to
+# its `needs`; job names and matrices can change without touching the ruleset.
 name: CI
 
 on:
@@ -67,7 +71,7 @@ jobs:
       - run: cargo test --locked
 
   msrv:
-    name: minimum Rust (1.89)
+    name: minimum supported Rust
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -144,3 +148,19 @@ jobs:
           path: target/${{ matrix.target }}/static/pakdeck
           if-no-files-found: error
           retention-days: 14
+
+  # The single required status check for pull requests (see the header).
+  ci-ok:
+    name: CI ok
+    # always(), not !cancelled(): a skipped required check counts as passed,
+    # so this job must run, and fail, when anything was cancelled too.
+    if: always()
+    needs: [lint, test, msrv, deps, fuzz, musl]
+    runs-on: ubuntu-latest
+    steps:
+      - name: check that all jobs passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do [[ "$r" == success ]] || exit 1; done

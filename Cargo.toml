@@ -3,7 +3,7 @@ name = "pakdeck"
 version = "0.1.0"
 edition = "2024"
 # Oldest Rust that builds it (the newest dependency needs 1.89). When changing it,
-# also update the msrv job in .github/workflows/ci.yml and the README CI section.
+# also update the toolchain of the msrv job in .github/workflows/ci.yml.
 rust-version = "1.89"
 description = "Terminal UI for your package managers: apt, dnf, zypper, pacman/AUR, apk, xbps, nix, brew, flatpak, snap, pkg, winget and scoop in one interface"
 license = "MIT"

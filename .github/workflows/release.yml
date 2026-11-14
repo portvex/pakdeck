@@ -1,0 +1,184 @@
+# Release: pushing a tag vX.Y.Z (matching the version in Cargo.toml) builds
+# the binaries, checksums and provenance attestations and publishes them as
+# a GitHub release with generated notes. See "Releasing" in the README.
+#
+# Release tags are protected (no moving or deleting them), so to rebuild an
+# existing release after fixing this workflow, run it by hand
+# (workflow_dispatch) with the tag: the tagged source is built with the
+# workflow from main (runs started from any other branch stop at once).
+# Assets of an existing release are only replaced with replace: true.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build and publish, e.g. v0.1.0
+        required: true
+      replace:
+        description: replace the assets if the release already has them
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  check:
+    name: check version and test
+    runs-on: ubuntu-latest
+    steps:
+      # Manual runs only from main, so a feature branch's copy of this
+      # workflow can never publish. Fails (not skips), so it is not mistaken
+      # for a successful rebuild; the later jobs need this one.
+      - name: manual runs only from main
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::run Release from main (this run was started from $GITHUB_REF)"
+          exit 1
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: tag matches Cargo.toml
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 --locked |
+            jq -r '.packages[] | select(.name == "pakdeck") | .version')
+          if [[ "$TAG" != "v$version" ]]; then
+            echo "::error::tag $TAG does not match Cargo.toml version $version (expected v$version)"
+            exit 1
+          fi
+      - run: cargo test --locked
+
+  build:
+    name: build (${{ matrix.target }})
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            build: cargo musl
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            build: cargo musl-arm
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            build: cargo build --locked --profile static --target aarch64-apple-darwin
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            build: cargo build --locked --profile static --target x86_64-apple-darwin
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            # Static CRT, so pakdeck.exe does not need vcruntime140.dll.
+            build: >-
+              cargo build --locked --profile static --target x86_64-pc-windows-msvc
+              --config "target.x86_64-pc-windows-msvc.rustflags=['-C','target-feature=+crt-static']"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: ${{ matrix.build }}
+      - name: package
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          name="pakdeck-$TAG-$TARGET"
+          mkdir -p "dist/$name"
+          cp README.md LICENSE "dist/$name/"
+          if [[ "$TARGET" == *windows* ]]; then
+            cp "target/$TARGET/static/pakdeck.exe" "dist/$name/"
+            (cd dist && 7z a -tzip -bso0 "$name.zip" "$name")
+          else
+            cp "target/$TARGET/static/pakdeck" "dist/$name/"
+            tar -C dist -czf "dist/$name.tar.gz" "$name"
+          fi
+          rm -rf "dist/$name"
+          ls -l dist
+      - name: smoke test
+        # Only where the runner can execute the binary natively.
+        if: contains(fromJSON('["x86_64-unknown-linux-musl","aarch64-apple-darwin","x86_64-pc-windows-msvc"]'), matrix.target)
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          bin="target/$TARGET/static/pakdeck"
+          [[ -f "$bin.exe" ]] && bin="$bin.exe"
+          out=$("$bin" --version)
+          echo "$out"
+          [[ "$out" == "pakdeck ${TAG#v}"* ]]
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release
+      id-token: write # sign the provenance attestation
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # Before checksums and attestations: a refused rebuild must not leave
+      # attestations for binaries that were never published.
+      - name: refuse to overwrite an existing release
+        env:
+          REPLACE: ${{ inputs.replace || false }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1 && [[ "$REPLACE" != true ]]; then
+            echo "::error::release $TAG already exists; run Release by hand from main and tick 'replace the assets'"
+            exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: checksums
+        working-directory: dist
+        run: |
+          sha256sum pakdeck-* > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/pakdeck-*
+      - name: create or update the release
+        run: |
+          notes="Download the archive for your platform, check it against SHA256SUMS, unpack it and run \`pakdeck\`.
+          The Linux builds are static (musl) and run on any distribution. Verify where a file was built with
+          \`gh attestation verify <file> --repo $GH_REPO\`.
+
+          The Windows build compiles and its parsers are tested, but it has not yet been run on a real Windows system."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Only reached with replace: true (checked in the first step).
+            gh release upload "$TAG" dist/* --clobber
+          else
+            pre=()
+            [[ "$TAG" == *-* ]] && pre=(--prerelease) # v1.2.0-rc1
+            gh release create "$TAG" dist/* --verify-tag --title "pakdeck $TAG" \
+              "${pre[@]}" --notes "$notes" --generate-notes
+          fi
