@@ -1,0 +1,17 @@
+# Static Linux builds: `cargo musl` (x86_64) and `cargo musl-arm` (aarch64),
+# using the `static` profile from Cargo.toml. Needs a rustup toolchain.
+# musl targets link statically by default. Rust ships musl's libc and start
+# files for them and pakdeck has no C dependencies, so the bundled rust-lld links
+# them on any host with rustup (macOS included) without a cross toolchain.
+#
+# The linker is set through the alias, not a [target.*-musl] section: with
+# --target, build.rustflags reaches only target artifacts, while a target
+# section would also apply to proc-macros and build scripts when the host
+# itself is musl (Alpine), and those cannot link with rust-lld.
+# RUSTFLAGS or CARGO_ENCODED_RUSTFLAGS in the environment replaces these
+# flags; include `-C linker=rust-lld` in it when cross-building.
+[alias]
+musl = ["build", "--locked", "--profile", "static", "--target", "x86_64-unknown-linux-musl",
+        "--config", "build.rustflags=['-C','linker=rust-lld']"]
+musl-arm = ["build", "--locked", "--profile", "static", "--target", "aarch64-unknown-linux-musl",
+            "--config", "build.rustflags=['-C','linker=rust-lld']"]

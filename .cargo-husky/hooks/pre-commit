@@ -1,0 +1,11 @@
+#!/bin/sh
+# Installed into .git/hooks by cargo-husky (source: .cargo-husky/hooks).
+# Fast checks only; the slower ones run on pre-push.
+set -e
+
+echo "pre-commit: cargo fmt --check"
+cargo fmt --all -- --check
+cargo fmt --manifest-path fuzz/Cargo.toml --all -- --check
+
+echo "pre-commit: cargo clippy"
+cargo clippy --all-targets --locked -- -D warnings

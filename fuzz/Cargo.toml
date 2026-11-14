@@ -1,0 +1,56 @@
+[package]
+name = "pakdeck-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+libfuzzer-sys = "0.4"
+ratatui = "0.30"
+shlex = "1"
+toml = "0.8"
+vt100 = "0.18"
+pakdeck = { path = ".." }
+
+# Keep the fuzz crate out of the main workspace.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "parsers"
+path = "fuzz_targets/parsers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "config"
+path = "fuzz_targets/config.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "quoting"
+path = "fuzz_targets/quoting.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ui"
+path = "fuzz_targets/ui.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "terminal"
+path = "fuzz_targets/terminal.rs"
+test = false
+doc = false
+bench = false

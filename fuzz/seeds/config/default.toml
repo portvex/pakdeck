@@ -1,0 +1,40 @@
+# pakdeck configuration
+
+# Force a backend: apt, dnf, yum, pacman, apk, brew. Auto-detected when unset.
+# backend = "apt"
+
+# Show commands instead of running them.
+dry_run = false
+
+# Ask for confirmation before running a command.
+confirm = true
+
+# Mouse support (click, wheel). Disabling it restores plain text selection;
+# with it on, most terminals still select text with Shift+drag.
+mouse = true
+
+# Privilege prefix for root commands. Auto: none as root, else sudo, else doas.
+# Set to "" to never prefix.
+# sudo = "doas"
+
+[theme]
+# Color names (red, cyan, darkgray, ...), indices ("42") or hex ("#89b4fa").
+accent = "cyan"
+selected_bg = "darkgray"
+installed = "green"
+marked = "yellow"
+update = "magenta"
+
+[keys]
+install = "i"
+delete = "d"
+update = "u"
+update_all = "U"
+cleanup = "c"
+sync = "s"
+reload = "r"
+mark = " "
+search = "/"
+dry_run = "D"
+help = "?"
+quit = "q"

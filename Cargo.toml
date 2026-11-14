@@ -1,0 +1,53 @@
+[package]
+name = "pakdeck"
+version = "0.1.0"
+edition = "2024"
+description = "Terminal UI for many package managers: apt, dnf, zypper, pacman, apk, brew, nix, flatpak, snap, pkg, winget and more"
+license = "MIT"
+readme = "README.md"
+keywords = ["tui", "package-manager", "apt", "homebrew", "flatpak"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+anyhow = "1.0.104"
+ctrlc = "3"
+portable-pty = "0.9"
+ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+terminal-colorsaurus = "1"
+toml = "0.8"
+# Edits the config file in place (the theme picker saves the choice).
+toml_edit = "0.22"
+vt100 = "0.18"
+
+[dev-dependencies]
+# Installs the git hooks in .cargo-husky/hooks into .git/hooks on `cargo test`.
+cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+
+# No code path may panic: no unwrap/expect, no panicking macros, no
+# unchecked indexing or string slicing. Tests are exempt (clippy.toml).
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+get_unwrap = "deny"
+unwrap_in_result = "deny"
+panic_in_result_fn = "deny"
+# Overflow panics in debug builds; use checked/saturating arithmetic.
+arithmetic_side_effects = "deny"
+
+# Release binaries for distribution (`cargo musl`, see .cargo/config.toml):
+# smaller and a little faster than `release`, slower to build. Panics still
+# unwind so the terminal guards run (no `panic = "abort"`). Not named `dist`,
+# which cargo-dist would take over.
+[profile.static]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+strip = true

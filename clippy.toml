@@ -1,0 +1,5 @@
+# A panic in a test is a test failure, not a crash.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true

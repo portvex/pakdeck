@@ -1,0 +1,21 @@
+#!/bin/sh
+# Installed into .git/hooks by cargo-husky (source: .cargo-husky/hooks).
+set -e
+
+echo "pre-push: cargo test"
+cargo test --locked
+
+echo "pre-push: clippy on fuzz targets"
+cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
+
+echo "pre-push: clippy for other platforms"
+scripts/cross-check.sh
+
+echo "pre-push: cargo machete (unused dependencies)"
+cargo machete
+
+echo "pre-push: cargo audit"
+cargo audit
+
+echo "pre-push: cargo deny check"
+cargo deny check
