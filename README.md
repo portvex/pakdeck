@@ -3,7 +3,11 @@
 [![CI](https://github.com/portvex/pakdeck/actions/workflows/ci.yml/badge.svg)](https://github.com/portvex/pakdeck/actions/workflows/ci.yml)
 
 A terminal UI for your package managers, written in Rust with
-[ratatui](https://ratatui.rs). One interface for:
+[ratatui](https://ratatui.rs).
+
+![pakdeck: the Installed tab with apt selected and its details on the right](docs/screenshots/installed.svg)
+
+One interface for:
 
 | Platform                 | Backend       | Tools used                                  | Tested in   |
 |--------------------------|---------------|---------------------------------------------|-------------|
@@ -53,8 +57,47 @@ Check the archive against the release's `SHA256SUMS`
 binary the first time; in the unpacked folder, run
 `xattr -d com.apple.quarantine pakdeck`.
 
-From source (needs Rust 1.89 or newer, the `rust-version` in `Cargo.toml`):
+### Linux packages
+
+From v0.1.1 on, each release also has native packages of the static binary
+for x86_64 and aarch64. They install `/usr/bin/pakdeck`, have no
+dependencies, and use xz compression, which old releases read too (tested on
+current Debian, Fedora, openSUSE Tumbleweed, Arch and Alpine, and on Ubuntu
+20.04). They are not signed, so some installers need a flag (shown below);
+check them against `SHA256SUMS` first.
+
+| Distribution | Package | Install | Remove |
+|---|---|---|---|
+| Debian, Ubuntu | `pakdeck_X.Y.Z-1_amd64.deb` (`_arm64`) | `sudo apt install ./pakdeck_X.Y.Z-1_amd64.deb` | `sudo apt remove pakdeck` |
+| Fedora, RHEL | `pakdeck-X.Y.Z-1.x86_64.rpm` (`.aarch64`) | `sudo dnf install ./pakdeck-X.Y.Z-1.x86_64.rpm` | `sudo dnf remove pakdeck` |
+| openSUSE | the same `.rpm` | `sudo zypper install --allow-unsigned-rpm ./pakdeck-X.Y.Z-1.x86_64.rpm` | `sudo zypper remove pakdeck` |
+| Arch Linux | `pakdeck-X.Y.Z-1-x86_64.pkg.tar.zst` (`-aarch64`) | `sudo pacman -U pakdeck-X.Y.Z-1-x86_64.pkg.tar.zst` | `sudo pacman -R pakdeck` |
+| Alpine (as root, or with `doas`) | `pakdeck_X.Y.Z-r1_x86_64.apk` (`_aarch64`) | `apk add --allow-untrusted pakdeck_X.Y.Z-r1_x86_64.apk` | `apk del pakdeck` |
+
+The packages are not in any distribution repository, so new versions come
+from the releases page: install the newer package the same way.
+
+### From source
+
+Needs Rust 1.89 or newer (the `rust-version` in `Cargo.toml`):
 `cargo install --git https://github.com/portvex/pakdeck`, or see Build below.
+
+## Screenshots
+
+Search the repositories:
+
+![Searching for "vim": results on the left, the details of the selected package on the right](docs/screenshots/search.svg)
+
+Install in the embedded terminal, with the package manager's own output:
+
+![Installing fzf: apt-get's output in a terminal pane inside pakdeck](docs/screenshots/terminal.svg)
+
+Pick a theme; moving the selection previews it on the whole screen:
+
+![The theme picker over the search results, previewing the nord theme](docs/screenshots/themes.svg)
+
+The screenshots show a stock Debian container with the `tokyo-night` theme;
+`scripts/screenshots.sh` regenerates them.
 
 ## Features
 
@@ -471,13 +514,29 @@ on `main`, weekly, and on pull requests that touch the backends. Dependabot
    `git tag -a v0.2.0 -m "pakdeck v0.2.0" && git push origin v0.2.0`.
 
 `.github/workflows/release.yml` checks that the tag matches `Cargo.toml`,
-runs the tests, builds the five archives above, and publishes a GitHub
-release with `SHA256SUMS`, provenance attestations and notes generated from
-the merged pull requests. Release tags (`v*`) cannot be moved or deleted, so
-a broken release is fixed with a new version. If only the workflow failed,
-fix it on `main` and run "Release" by hand from `main` (Actions, Run
-workflow) with the existing tag; tick "replace the assets" if the release
-already has them. A tag with a suffix (`v0.2.0-rc1`) is published as a pre-release.
+runs the tests, builds the five archives and the Linux packages above, and
+publishes a GitHub release with `SHA256SUMS`, provenance attestations and
+notes generated from the merged pull requests. Release tags (`v*`) cannot be
+moved or deleted, so a broken release is fixed with a new version. If only
+the workflow failed, fix it on `main` and run "Release" by hand from `main`
+(Actions, Run workflow) with the existing tag; tick "replace the assets" if
+the release already has them. A tag with a suffix (`v0.2.0-rc1`) is
+published as a pre-release; keep the suffix to letters and a number without
+dots, which every package format accepts.
+
+To build the Linux packages locally (needs
+[nfpm](https://nfpm.goreleaser.com/install/)), then install and remove each
+one in its distribution with Docker:
+
+```sh
+cargo musl
+scripts/package.sh target/x86_64-unknown-linux-musl/static/pakdeck amd64 dist
+tests/packages/run.sh dist
+```
+
+CI pins nfpm by version and sha256 in `.github/actions/setup-nfpm`, which
+Dependabot cannot update: bump the version and both hashes there together
+now and then.
 
 ### Repository rules
 

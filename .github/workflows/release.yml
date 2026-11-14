@@ -131,9 +131,44 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  packages:
+    name: Linux packages (deb, rpm, arch, apk)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # The packaging scripts come from the workflow's own commit (the tag on
+      # a tag push, main on a manual rebuild); the binaries come from the
+      # archives built from the tag above.
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nfpm
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*-linux-musl
+          path: archives
+          merge-multiple: true
+      - name: build packages
+        run: |
+          for t in x86_64 aarch64; do
+            tar -xzf "archives/pakdeck-$TAG-$t-unknown-linux-musl.tar.gz" -C archives
+          done
+          # README and LICENSE as of the tag (the checkout is main on a rebuild).
+          cp "archives/pakdeck-$TAG-x86_64-unknown-linux-musl/README.md" \
+            "archives/pakdeck-$TAG-x86_64-unknown-linux-musl/LICENSE" .
+          v=${TAG#v}
+          scripts/package.sh "archives/pakdeck-$TAG-x86_64-unknown-linux-musl/pakdeck" amd64 dist "$v"
+          scripts/package.sh "archives/pakdeck-$TAG-aarch64-unknown-linux-musl/pakdeck" arm64 dist "$v"
+      # Installs, checks and removes each x86_64 package in its distribution.
+      - run: tests/packages/run.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-packages
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
     name: publish release
-    needs: build
+    needs: [build, packages]
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the release
@@ -161,15 +196,18 @@ jobs:
       - name: checksums
         working-directory: dist
         run: |
-          sha256sum pakdeck-* > SHA256SUMS
+          sha256sum pakdeck[-_]* > SHA256SUMS
           cat SHA256SUMS
       - uses: actions/attest-build-provenance@v2
         with:
-          subject-path: dist/pakdeck-*
+          subject-path: |
+            dist/pakdeck-*
+            dist/pakdeck_*
       - name: create or update the release
         run: |
           notes="Download the archive for your platform, check it against SHA256SUMS, unpack it and run \`pakdeck\`.
-          The Linux builds are static (musl) and run on any distribution. Verify where a file was built with
+          The Linux builds are static (musl) and run on any distribution; .deb, .rpm, Arch (.pkg.tar.zst) and Alpine
+          (.apk) packages of them are attached too (unsigned, see the README). Verify where a file was built with
           \`gh attestation verify <file> --repo $GH_REPO\`.
 
           The Windows build compiles and its parsers are tested, but it has not yet been run on a real Windows system."

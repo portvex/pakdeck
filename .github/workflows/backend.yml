@@ -1,8 +1,9 @@
-# Backend integration tests: tests/docker/run.sh runs every pakdeck operation
-# for real inside each distro (tests/docker/check.sh). The static binary is
-# built once (tests/build-linux.sh, exactly as shipped) and shared by the
-# distro jobs. Slow, so pull requests run it only when they touch the code
-# check.sh exercises or the tests themselves.
+# Docker tests in distribution images: tests/docker/run.sh runs every pakdeck
+# operation for real inside each distro (tests/docker/check.sh), and
+# tests/packages/run.sh installs and removes the .deb/.rpm/Arch/Alpine
+# packages. The static binary is built once (tests/build-linux.sh, exactly as
+# shipped) and shared. Slow and dependent on outside images, so not a
+# required check; pull requests run it only when they touch what it tests.
 name: Backend tests
 
 on:
@@ -21,6 +22,10 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".cargo/config.toml"
+      - "packaging/**"
+      - "scripts/package.sh"
+      - "tests/packages/**"
+      - ".github/actions/setup-nfpm/**"
       - ".github/workflows/backend.yml"
   schedule:
     - cron: "37 4 * * 1" # Mondays: distro images change under us
@@ -69,3 +74,23 @@ jobs:
       - run: tests/docker/run.sh ${{ matrix.distro }}
         env:
           PAKDECK_BIN: ${{ runner.temp }}/bin/pakdeck
+
+  packages:
+    name: package ${{ matrix.format }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        format: [deb, deb-old, rpm, rpm-suse, arch, apk]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nfpm
+      - uses: actions/download-artifact@v4
+        with:
+          name: pakdeck-docker-test
+          path: ${{ runner.temp }}/bin
+      - run: chmod +x "$RUNNER_TEMP/bin/pakdeck"
+      - run: scripts/package.sh "$RUNNER_TEMP/bin/pakdeck" amd64 dist
+      - run: tests/packages/run.sh dist ${{ matrix.format }}

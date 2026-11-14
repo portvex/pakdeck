@@ -1,3 +1,4 @@
 /target
 /tests/vm/.cache
 .DS_Store
+/dist

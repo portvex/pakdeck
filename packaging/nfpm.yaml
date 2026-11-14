@@ -1,0 +1,68 @@
+# Native Linux packages (.deb, .rpm, Arch .pkg.tar.zst, Alpine .apk) of the
+# static musl binary, built with nfpm (https://nfpm.goreleaser.com) by
+# scripts/package.sh. The binary has no runtime dependencies, so the
+# packages declare none. deb and rpm use xz, which old dpkg (Debian 9+,
+# Ubuntu 18.04+) and rpm (RHEL 7+) read; zstd would need Debian 12 / rpm 4.14.
+#
+# scripts/package.sh copies the binary to target/package/pakdeck (nfpm does
+# not expand variables in file paths) and sets VERSION (from the tag or
+# Cargo.toml) and ARCH (amd64 or arm64; nfpm maps it per format).
+name: pakdeck
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+version_schema: semver
+release: 1
+section: admin
+priority: optional
+maintainer: portvex <portvex@users.noreply.github.com>
+description: |
+  Terminal UI for your package managers.
+  One interface for apt, dnf, zypper, pacman/AUR, apk, xbps, nix, flatpak,
+  snap and more: search, review, install, remove, update, hold, history
+  and undo.
+vendor: pakdeck
+homepage: https://github.com/portvex/pakdeck
+license: MIT
+
+contents:
+  - src: target/package/pakdeck
+    dst: /usr/bin/pakdeck
+    file_info:
+      mode: 0755
+  - src: README.md
+    dst: /usr/share/doc/pakdeck/README.md
+    file_info:
+      mode: 0644
+  # Debian keeps the license as /usr/share/doc/<package>/copyright; the
+  # others use /usr/share/licenses/<package>/.
+  - src: LICENSE
+    dst: /usr/share/doc/pakdeck/copyright
+    packager: deb
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/licenses/pakdeck/LICENSE
+    packager: rpm
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/licenses/pakdeck/LICENSE
+    packager: archlinux
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/licenses/pakdeck/LICENSE
+    packager: apk
+    file_info:
+      mode: 0644
+
+rpm:
+  group: Applications/System
+  compression: xz
+
+deb:
+  compression: xz
+
+archlinux:
+  packager: portvex <portvex@users.noreply.github.com>

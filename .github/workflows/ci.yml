@@ -1,7 +1,7 @@
 # Mirrors the local checks (CLAUDE.md, .cargo-husky/hooks): fmt, clippy with
 # the no-panic lints on every supported platform, tests, dependency policy,
-# a short fuzz run and the static Linux builds. The Docker backend tests are
-# in backend.yml.
+# a short fuzz run, the static Linux builds and their .deb/.rpm/Arch/Alpine
+# packages. The Docker tests (backends, package installs) are in backend.yml.
 #
 # The toolchain is `stable`, not pinned: a new Rust release can bring new
 # clippy lints and turn main red without a code change. That is accepted to
@@ -149,13 +149,38 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  packages:
+    name: Linux packages (deb, rpm, arch, apk)
+    needs: musl
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nfpm
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pakdeck-*-linux-musl
+          path: ${{ runner.temp }}/bin
+      - name: build packages
+        run: |
+          bin=$RUNNER_TEMP/bin
+          chmod +x "$bin"/*/pakdeck
+          scripts/package.sh "$bin/pakdeck-x86_64-unknown-linux-musl/pakdeck" amd64 dist
+          scripts/package.sh "$bin/pakdeck-aarch64-unknown-linux-musl/pakdeck" arm64 dist
+      # Install tests (Docker, distribution images) run in backend.yml.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pakdeck-linux-packages
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
   # The single required status check for pull requests (see the header).
   ci-ok:
     name: CI ok
     # always(), not !cancelled(): a skipped required check counts as passed,
     # so this job must run, and fail, when anything was cancelled too.
     if: always()
-    needs: [lint, test, msrv, deps, fuzz, musl]
+    needs: [lint, test, msrv, deps, fuzz, musl, packages]
     runs-on: ubuntu-latest
     steps:
       - name: check that all jobs passed

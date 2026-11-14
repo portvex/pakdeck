@@ -1,0 +1,30 @@
+name: Set up nfpm
+description: Install the pinned nfpm release for building Linux packages, checked against hashes kept here.
+# nfpm writes every byte of the packages that releases attest, so it is
+# pinned by hash, not only by version: the hashes below are not read from
+# the release itself. Dependabot cannot bump this. To update, change the
+# version and both hashes together (sha256 of nfpm_<v>_Linux_<arch>.tar.gz,
+# e.g. `curl -fsSL <url> | sha256sum`, compared with the release's
+# checksums.txt).
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        V: "2.48.0"
+        SHA_X86_64: 6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750
+        SHA_ARM64: a9a75213763783b7669719e505474c748c5ad7dc66591a195619deb50f85c2f4
+      run: |
+        set -euo pipefail
+        case "$(uname -m)" in
+          x86_64) a=x86_64 sha=$SHA_X86_64 ;;
+          aarch64 | arm64) a=arm64 sha=$SHA_ARM64 ;;
+          *) echo "::error::unsupported runner architecture $(uname -m)"; exit 1 ;;
+        esac
+        tgz="nfpm_${V}_Linux_${a}.tar.gz"
+        cd "$RUNNER_TEMP"
+        curl -fsSLO "https://github.com/goreleaser/nfpm/releases/download/v${V}/$tgz"
+        echo "$sha  $tgz" | sha256sum -c -
+        mkdir -p nfpm && tar -xzf "$tgz" -C nfpm nfpm
+        echo "$RUNNER_TEMP/nfpm" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/nfpm/nfpm" --version | grep -i gitversion
